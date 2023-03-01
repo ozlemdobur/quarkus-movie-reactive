@@ -15,8 +15,14 @@ import static javax.ws.rs.core.Response.Status.*;
 @Produces("application/json")
 @Consumes("application/json")
 public class MovieResource {
+
+    private IMovieService movieService;
+
     @Inject
-    private MovieService movieService;
+    public MovieResource(IMovieService movieService) {
+        this.movieService = movieService;
+    }
+
     @GET
     public Uni<Response> getAll() {
 //        Uni<List<MovieView>> movieViews =movieService.listAll();
@@ -65,7 +71,7 @@ public class MovieResource {
     @Path("{id}")
     public Uni<Response> update(Long id, MovieView movieView) {
         Uni<Response> response = movieService.update(id, movieView)
-                .map(movieView1 -> Response.ok(CREATED).build());
+                .map(movieView1 -> Response.ok(movieView1).build());
         return response;
     }
 

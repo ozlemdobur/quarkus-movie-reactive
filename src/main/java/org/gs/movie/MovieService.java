@@ -8,18 +8,21 @@ import org.hibernate.cache.NoCacheRegionFactoryAvailableException;
 
 import javax.enterprise.context.ApplicationScoped;
 import javax.inject.Inject;
+import javax.naming.NotContextException;
+import javax.persistence.NoResultException;
+import javax.ws.rs.NotFoundException;
 import javax.ws.rs.WebApplicationException;
 import java.util.List;
 import static javax.ws.rs.core.Response.Status.NO_CONTENT;
+import static org.jboss.resteasy.reactive.RestResponse.StatusCode.NOT_FOUND;
 
 @ApplicationScoped
-public class MovieService {
-
-    @Inject
+public class MovieService implements IMovieService{
     private MovieRepository movieRepository;
 
     private MovieMapper movieMapper = MovieMapper.INSTANCE;
 
+    @Inject
     public MovieService(MovieRepository movieRepository) {
         this.movieRepository = movieRepository;
     }
@@ -30,20 +33,31 @@ public class MovieService {
 
    public Uni<MovieView> findById(Long id){
         return movieRepository.findById(id)
-                .onItem().ifNull().failWith(new WebApplicationException("Not Found", 404))
-                .map(movieMapper::movieEntityToMovieView);
+                .onItem().ifNull().failWith( new WebApplicationException("Not Found", 404))
+                .onItem().transform(movieEntity -> movieMapper.movieEntityToMovieView(movieEntity));
+                //.onFailure(NoResultException.class).transform(throwable -> new WebApplicationException("Not Found", 404));
+
+      /* return movieRepository.find("id",id).singleResult()
+               .onItem().transform(movieEntity -> movieMapper.movieEntityToMovieView(movieEntity))
+               .onFailure(NoResultException.class).transform(throwable -> new WebApplicationException("Not Found", 404));*/
    }
 
-/*   public Uni<MovieView> findByTitle(String title){
-        return movieRepository.find("title", title).singleResult().onFailure(NR.class)
-                .onItem().ifNull().failWith(new WebApplicationException("Not Found", 404))
-                .map(p->movieMapper.movieEntityToMovieView(p));
-   }*/
+
+
+    public Uni<MovieView> findByTitle(String title){
+
+        return movieRepository.find("title", title).singleResult()
+                .onItem().transform(movieEntity -> movieMapper.movieEntityToMovieView(movieEntity))
+                .onFailure(NoResultException.class).transform(throwable -> new WebApplicationException("Not Found", 404));
+
+    }
 
    public Uni<List<MovieView>> findByCountry(String country){
         return movieRepository.findByCountry(country)
-                .onItem().ifNull().failWith(new WebApplicationException("Not Content", 204))
-                .map(p->movieMapper.movieEntityToMovieViews(p));
+                //.onItem().ifNull().failWith(new WebApplicationException("404", 404))
+                //.invoke(entity->{(entity.isEmpty())?new WebApplicationException("Not found", 404)})
+                //.onFailure(NoResultException.class).transform(throwable -> new WebApplicationException("Not Found", 404))
+                .onItem().transform(movieEntity -> movieMapper.movieEntityToMovieViews(movieEntity));
 
    }
     @ReactiveTransactional
@@ -59,23 +73,22 @@ public class MovieService {
 
     @ReactiveTransactional
     public Uni<MovieView> update(Long id, MovieView movieView) {
-        if (id == null) {
-            throw new WebApplicationException("Bad Request.Id should be notnull", 400);
+        if (movieView == null || movieView.getId() == null) {
+            throw new WebApplicationException("Not Found", 404);
         }
         if(id!= movieView.getId()) {
             throw new WebApplicationException("Conflict", 409);
         }
-/*
-        UniOnItem<MovieEntity> movieViewUniOnItem = movieRepository.findById(id).onItem();
-        movieViewUniOnItem.ifNull().failWith(new WebApplicationException("Id is not found", 400));*/
 
-        Uni<MovieEntity> entity = movieRepository.findById(id);
-        return entity.onItem().ifNotNull()
+
+        return movieRepository.findById(id)
+                //onFailure(NoResultException.class).transform(throwable -> new WebApplicationException("Not Found", 404) )
+                .onItem()
                 .invoke(movieEntity1 -> movieEntity1.setTitle(movieView.getTitle()))
                 .invoke(movieEntity1 -> movieEntity1.setCountry(movieView.getCountry()))
                 .invoke(movieEntity1 -> movieEntity1.setDescription(movieView.getDescription()))
                 .invoke(movieEntity1 -> movieRepository.persist(movieEntity1))
-                .map(newMovieEntity-> movieMapper.movieEntityToMovieView(newMovieEntity));
+                .map(movieEntity->movieMapper.movieEntityToMovieView(movieEntity));
 
     }
 
